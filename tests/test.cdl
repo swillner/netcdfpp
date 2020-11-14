@@ -1,0 +1,104 @@
+netcdf test {
+types:
+  compound type_compound {
+    char c ;
+    int i(3, 2) ;
+    double d ;
+  }; // type_compound
+  opaque(1) type_opaque ;
+  int(*) type_vlen ;
+  int enum type_enum {E1 = 1, E2 = 2, E3 = 3} ;
+dimensions:
+	dim_unlimited = UNLIMITED ; // (2 currently)
+	dim_with_size = 10 ;
+	dim_two = 2 ;
+	dim_renamed = UNLIMITED ; // (0 currently)
+variables:
+	float var_float(dim_unlimited) ;
+		var_float:var_att_float_vector = 1.2f, 3.4f, 5.6f ;
+	ubyte var_char1(dim_with_size, dim_with_size) ;
+		var_char1:_FillValue = 137UB ;
+	char var_char2(dim_with_size, dim_with_size) ;
+		var_char2:_FillValue = "ÿ" ;
+	int64 var_long_renamed(dim_with_size) ;
+	short var_short(dim_with_size) ;
+		var_short:_FillValue = 137s ;
+	string var_string(dim_with_size) ;
+	type_compound var_compound(dim_two) ;
+	type_vlen var_vlen(dim_two) ;
+	type_opaque var_opaque(dim_with_size) ;
+	type_enum var_enum(dim_with_size) ;
+		type_enum var_enum:_FillValue = E1 ;
+
+// global attributes:
+		:att_string1 = "att_value1" ;
+		:att_string2 = "att_value2" ;
+		:att_string3 = "att_value3" ;
+		:att_int = 123 ;
+		string :att_string_vector1 = "a", "b", "c" ;
+		string :att_string_vector2 = "a", "b", "c" ;
+		string :att_string_vector3 = "a", "b", "c" ;
+		:att_renamed = 123.456 ;
+data:
+
+ var_float = 123.456, 789.012 ;
+
+ var_char1 =
+  _, _, _, _, _, _, _, _, _, _,
+  _, _, _, _, 1, 2, 3, _, _, _,
+  _, _, _, _, 4, 5, 6, _, _, _,
+  _, _, _, _, _, _, _, _, _, _,
+  _, _, 1, _, _, 2, _, _, _, _,
+  _, _, _, _, _, _, _, 7, _, 9,
+  _, _, 3, _, _, 4, _, 8, _, 0,
+  _, _, _, _, _, _, _, _, _, _,
+  _, _, 5, _, _, 6, _, _, _, _,
+  _, _, _, _, _, _, _, _, _, _ ;
+
+ var_char2 =
+  "\377\377\377\377\377\377\377\377\377\377",
+  "\377\377\377\377\001\002\003\377\377\377",
+  "\377\377\003\377\004\005\006\377\377\377",
+  "\377\377\377\377\377\377\377\377\377\377",
+  "\377\377\001\377\377\002\377\377\377\377",
+  "\377\377\377\377\377\377\001\007\003\t",
+  "\377\377\003\377\377\004\002\b\004",
+  "\377\377\377\377\377\377\377\377\377\377",
+  "\377\377\005\377\377\006\377\377\377\377",
+  "\377\377\377\377\377\377\377\377\377\377" ;
+
+ var_long_renamed = 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 ;
+
+ var_short = 0, _, _, _, _, _, _, _, _, _ ;
+
+ var_string = "a", "b", "c", "d", "e", "f", "g", "h", "i", "j" ;
+
+ var_compound = {"a", {1, 2, 3, 4, 5, 6}, 456.789}, 
+    {"b", {9, 8, 7, 6, 5, 4}, 654.321} ;
+
+ var_vlen = {1, 2, 3}, {} ;
+
+ var_opaque = 0X61, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00 ;
+
+ var_enum = _, E2, E3, E2, E2, _, E3, _, E2, _ ;
+
+group: group {
+  variables:
+  	string group_var_string1(dim_with_size) ;
+  	string group_var_string2(dim_with_size) ;
+
+  // group attributes:
+  		type_compound :group_att_compound = {"c", {2, 4, 6, 8, 0, 2}, 246.802} ;
+  		type_opaque :group_att_opaque = 0X62 ;
+  		type_enum :group_att_enum = E1, E2, E3 ;
+  		type_vlen :group_att_vlen = {1, 2, 3} ;
+  data:
+
+   group_var_string1 = "a", "b", "c", "d", "e", "f", "g", "h", "i", "j" ;
+
+   group_var_string2 = "a", "b", "c", "d", "e", "f", "g", "h", "i", "j" ;
+  } // group group
+
+group: group_renamed {
+  } // group group_renamed
+}
