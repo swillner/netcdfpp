@@ -1,0 +1,16 @@
+set(NETCDFPP_PATH ${CMAKE_CURRENT_LIST_DIR})
+if (NOT TARGET netcdfpp)
+  add_library(netcdfpp INTERFACE)
+  function(include_netcdfpp TARGET)
+    set_property(TARGET netcdfpp PROPERTY INTERFACE_INCLUDE_DIRECTORIES ${NETCDFPP_PATH}/include)
+
+    set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${NETCDFPP_PATH})
+    find_package(NETCDF REQUIRED)
+    message(STATUS "NetCDF include directory: ${NETCDF_INCLUDE_DIR}")
+    message(STATUS "NetCDF library: ${NETCDF_LIBRARY}")
+    target_link_libraries(netcdfpp INTERFACE netcdf)
+    target_compile_features(netcdfpp INTERFACE cxx_std_11)
+
+    target_link_libraries(${TARGET} PRIVATE netcdfpp)
+  endfunction()
+endif()
