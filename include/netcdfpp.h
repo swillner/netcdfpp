@@ -1263,7 +1263,7 @@ class Variable final : public detail::Object {
     }
 };
 
-void Attribute::copy_values(const Attribute& a) {
+inline void Attribute::copy_values(const Attribute& a) {
     auto type_l = a.type();
     std::size_t type_len;
     char name[NC_MAX_NAME + 1];
@@ -1314,17 +1314,17 @@ inline void Attribute::set(const std::vector<char*>& v) {
 }
 
 template<typename T>
-void Attribute::set(const std::vector<T>& v, const UserType& type) {
+inline void Attribute::set(const std::vector<T>& v, const UserType& type) {
     static_assert(!Type<T>::is_atomic, "Should be of user type");
     check(nc_put_att(ncid(), othid(), path->name.c_str(), type.id(), v.size(), &v[0]));
 }
 template<typename T>
-void Attribute::set(const T& v, const UserType& type) {
+inline void Attribute::set(const T& v, const UserType& type) {
     static_assert(!Type<T>::is_atomic, "Should be of user type");
     check(nc_put_att(ncid(), othid(), path->name.c_str(), type.id(), 1, &v));
 }
 
-Maybe<UserType> Attribute::user_type() const {
+inline Maybe<UserType> Attribute::user_type() const {
     const auto id = type();
     char name[NC_MAX_NAME + 1];
     check(nc_inq_type(path->parent->id, id, name, nullptr));
