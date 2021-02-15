@@ -1083,18 +1083,22 @@ class Variable final : public detail::Object {
 
     template<typename T>
     void read(T* v) const {
+        static_assert(!Type<T>::is_atomic || std::is_same<void, T>::value, "Use void or one of the explicitly supported types");
         check(nc_get_var(path->parent->id, path->id, v));
     }
     template<typename T>
     void read(T* v, const std::size_t* index) const {
+        static_assert(!Type<T>::is_atomic || std::is_same<void, T>::value, "Use void or one of the explicitly supported types");
         check(nc_get_var1(path->parent->id, path->id, index, v));
     }
     template<typename T>
     void read(T* v, const std::size_t* start, const std::size_t* count) const {
+        static_assert(!Type<T>::is_atomic || std::is_same<void, T>::value, "Use void or one of the explicitly supported types");
         check(nc_get_vara(path->parent->id, path->id, start, count, v));
     }
     template<typename T>
     void read(T* v, const std::size_t* start, const std::size_t* count, const std::ptrdiff_t* stride) const {
+        static_assert(!Type<T>::is_atomic || std::is_same<void, T>::value, "Use void or one of the explicitly supported types");
         check(nc_get_vars(path->parent->id, path->id, start, count, stride, v));
     }
     template<typename T>
@@ -1177,18 +1181,22 @@ class Variable final : public detail::Object {
 
     template<typename T>
     void write(const T* v) {
+        static_assert(!Type<T>::is_atomic || std::is_same<void, T>::value, "Use void or one of the explicitly supported types");
         check(nc_put_var(path->parent->id, path->id, v));
     }
     template<typename T>
     void write(const T* v, const std::size_t* index) {
+        static_assert(!Type<T>::is_atomic || std::is_same<void, T>::value, "Use void or one of the explicitly supported types");
         check(nc_put_var1(path->parent->id, path->id, index, v));
     }
     template<typename T>
     void write(const T* v, const std::size_t* start, const std::size_t* count) {
+        static_assert(!Type<T>::is_atomic || std::is_same<void, T>::value, "Use void or one of the explicitly supported types");
         check(nc_put_vara(path->parent->id, path->id, start, count, v));
     }
     template<typename T>
     void write(const T* v, const std::size_t* start, const std::size_t* count, const std::ptrdiff_t* stride) {
+        static_assert(!Type<T>::is_atomic || std::is_same<void, T>::value, "Use void or one of the explicitly supported types");
         check(nc_put_vars(path->parent->id, path->id, start, count, stride, v));
     }
     template<typename T>
