@@ -10,8 +10,12 @@ target_compile_features(test_netcdfpp PUBLIC cxx_std_14)
 target_compile_options(test_netcdfpp PRIVATE -Wall -pedantic -Wextra -Wno-reorder --coverage)
 target_link_options(test_netcdfpp PRIVATE --coverage)
 
+add_executable(test_include_self_contained tests/test_include_self_contained.cpp)
+target_compile_features(test_include_self_contained PUBLIC cxx_std_14)
+
 include(netcdfpp.cmake)
 include_netcdfpp(test_netcdfpp)
+include_netcdfpp(test_include_self_contained)
 
 add_custom_target(run_main_test
   COMMAND test_netcdfpp
@@ -33,7 +37,7 @@ add_custom_target(test_generated_files
   DEPENDS convert_test_files test.cdl test_copy.cdl)
 
 add_custom_target(test
-  DEPENDS test_generated_files)
+  DEPENDS test_generated_files test_include_self_contained)
 
 add_custom_target(coverage
   COMMAND lcov --quiet --capture --include "**/include/netcdfpp.h" --directory . --output-file coverage.info
