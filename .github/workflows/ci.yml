@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y clang-format doxygen libnetcdf-dev netcdf-bin
+
+      - name: Configure
+        run: cmake -S . -B build
+
+      - name: Check formatting
+        run: cmake --build build --target check-format
+
+      - name: Run tests
+        run: cmake --build build --target test
+
+      - name: Build docs
+        run: cmake --build build --target docs

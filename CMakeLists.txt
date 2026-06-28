@@ -7,7 +7,7 @@ set(CMAKE_BUILD_TYPE Debug)
 add_executable(test_netcdfpp tests/test_netcdfpp.cpp)
 target_include_directories(test_netcdfpp PRIVATE lib/doctest/doctest)
 target_compile_features(test_netcdfpp PUBLIC cxx_std_14)
-target_compile_options(test_netcdfpp PRIVATE -Wall -pedantic -Wextra -Wno-reorder --coverage)
+target_compile_options(test_netcdfpp PRIVATE -Wall -pedantic -Wextra --coverage)
 target_link_options(test_netcdfpp PRIVATE --coverage)
 
 add_executable(test_include_self_contained tests/test_include_self_contained.cpp)
@@ -24,6 +24,26 @@ if(DOXYGEN_FOUND)
     COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Generating API documentation with Doxygen"
+    VERBATIM)
+endif()
+
+set(NETCDFPP_FORMAT_FILES
+  include/netcdfpp.h
+  tests/test_include_self_contained.cpp
+  tests/test_netcdfpp.cpp)
+
+find_program(CLANG_FORMAT_EXECUTABLE clang-format)
+if(CLANG_FORMAT_EXECUTABLE)
+  add_custom_target(format
+    COMMAND ${CLANG_FORMAT_EXECUTABLE} -i ${NETCDFPP_FORMAT_FILES}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Formatting source files with clang-format"
+    VERBATIM)
+
+  add_custom_target(check-format
+    COMMAND ${CLANG_FORMAT_EXECUTABLE} --dry-run --Werror ${NETCDFPP_FORMAT_FILES}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Checking source formatting with clang-format"
     VERBATIM)
 endif()
 
