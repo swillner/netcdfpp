@@ -35,8 +35,10 @@ program.
 int main() {
     netCDF::File file("example.nc", 'w');
 
-    auto x = file.add_dimension("x", 3);
-    auto values = file.add_variable<double>("values", {x});
+    auto x = file.add_dimension_variable<double>("x", 3);
+    x.set<double>({0.0, 1.0, 2.0});
+
+    auto values = file.add_variable<double>("values", {"x"});
 
     values.set<double>({1.0, 2.0, 3.0});
     file.add_attribute("title").set<std::string>("example");
@@ -52,6 +54,23 @@ auto values = file.variable("values").require();
 std::vector<double> data = values.get<double>();
 
 auto title = file.attribute("title").require().get_string();
+```
+
+For gridded data this stays fairly direct:
+
+```cpp
+auto lat = file.add_dimension_variable<double>("lat", 3);
+auto lon = file.add_dimension_variable<double>("lon", 4);
+
+lat.set<double>({50.0, 51.0, 52.0});
+lon.set<double>({7.0, 8.0, 9.0, 10.0});
+
+auto temperature = file.add_variable<float>("temperature", {"lat", "lon"});
+temperature.set<float>({
+    12.0f, 12.5f, 13.0f, 13.5f,
+    11.0f, 11.5f, 12.0f, 12.5f,
+    10.0f, 10.5f, 11.0f, 11.5f,
+});
 ```
 
 Lookups return `Maybe<T>`. That makes it possible to either check whether

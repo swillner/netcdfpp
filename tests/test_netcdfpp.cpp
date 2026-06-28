@@ -54,7 +54,7 @@ void REQUIRE_VEC(const std::vector<T>& actual, const std::vector<std::string>& e
 
 TEST_CASE("for_type helper function") {
     // require c++14
-    netCDF::for_type<void>(NC_STRING, [](auto type) -> void { REQUIRE(std::is_same<decltype(type), char*>::value);});
+    netCDF::for_type<void>(NC_STRING, [](auto type) -> void { REQUIRE(std::is_same<decltype(type), char*>::value); });
     netCDF::for_type<void>(NC_CHAR, [](auto type) { REQUIRE(std::is_same<decltype(type), char>::value); });
     netCDF::for_type<void>(NC_DOUBLE, [](auto type) { REQUIRE(std::is_same<decltype(type), double>::value); });
     netCDF::for_type<void>(NC_FLOAT, [](auto type) { REQUIRE(std::is_same<decltype(type), float>::value); });
@@ -262,6 +262,39 @@ TEST_CASE("empty and scalar objects") {
         REQUIRE(scalar_var.sizes().empty());
         REQUIRE(scalar_var.size() == 1);
         REQUIRE(scalar_var.get<int>() == std::vector<int>{42});
+    }
+}
+
+TEST_CASE("dimension variables") {
+    {
+        netCDF::File file("test_dimension_variables.nc", 'w');
+
+        auto x = file.add_dimension_variable<double>("x", 3);
+        x.set<double>({0.0, 1.0, 2.0});
+
+        auto time = file.add_dimension_variable<int>("time");
+        time.set<int, 1>({1, 2}, {0}, {2});
+
+        auto y_dim = file.add_dimension("y", 2);
+        auto y = file.add_dimension_variable<float>(y_dim);
+        y.set<float>({10.0f, 20.0f});
+    }
+
+    {
+        netCDF::File file("test_dimension_variables.nc", 'r');
+
+        REQUIRE(file.dimension("x").require().size() == 3);
+        REQUIRE(file.variable("x").require().check_dimensions({"x"}));
+        REQUIRE(file.variable("x").require().get<double>() == std::vector<double>{0.0, 1.0, 2.0});
+
+        REQUIRE(file.dimension("time").require().is_unlimited());
+        REQUIRE(file.dimension("time").require().size() == 2);
+        REQUIRE(file.variable("time").require().check_dimensions({"time"}));
+        REQUIRE(file.variable("time").require().get<int>() == std::vector<int>{1, 2});
+
+        REQUIRE(file.dimension("y").require().size() == 2);
+        REQUIRE(file.variable("y").require().check_dimensions({"y"}));
+        REQUIRE(file.variable("y").require().get<float>() == std::vector<float>{10.0f, 20.0f});
     }
 }
 
