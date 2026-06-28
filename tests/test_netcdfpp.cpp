@@ -228,17 +228,58 @@ TEST_CASE("appending") {
     REQUIRE_THROWS_WITH_AS(file.add_user_type(netCDF::testing::TestUserType::create()), "Invalid user type class: fake_user_type", netCDF::Exception);
 }
 
+TEST_CASE("empty and scalar objects") {
+    {
+        netCDF::File file("test_empty.nc", 'w');
+        auto empty_group = file.add_group("empty_group");
+        REQUIRE(empty_group.dimensions().empty());
+        REQUIRE(empty_group.groups().empty());
+        REQUIRE(empty_group.user_types().empty());
+        REQUIRE(empty_group.variables().empty());
+
+        file.add_dimension("empty_dim", 0);
+        file.add_variable<int>("empty_var", {"empty_dim"});
+
+        auto scalar_var = file.add_variable<int>("scalar_var", std::vector<int>{});
+        scalar_var.set<int>({42});
+    }
+
+    {
+        netCDF::File file("test_empty.nc", 'r');
+        REQUIRE(file.group("empty_group").require().dimensions().empty());
+        REQUIRE(file.group("empty_group").require().groups().empty());
+        REQUIRE(file.group("empty_group").require().user_types().empty());
+        REQUIRE(file.group("empty_group").require().variables().empty());
+
+        auto empty_var = file.variable("empty_var").require();
+        REQUIRE(empty_var.dimension_count() == 1);
+        REQUIRE(empty_var.size() == 0);
+        REQUIRE(empty_var.get<int>().empty());
+
+        auto scalar_var = file.variable("scalar_var").require();
+        REQUIRE(scalar_var.dimension_count() == 0);
+        REQUIRE(scalar_var.dimensions().empty());
+        REQUIRE(scalar_var.sizes().empty());
+        REQUIRE(scalar_var.size() == 1);
+        REQUIRE(scalar_var.get<int>() == std::vector<int>{42});
+    }
+}
+
 TEST_CASE("copying") {
     {
         netCDF::File infile("test.nc", 'r');
         netCDF::File outfile("test_copy.nc", 'w');
         outfile.copy_dimensions(infile);
         REQUIRE_THROWS_WITH_AS(outfile.add_variable<unsigned char>("var_temp1", {"dim_unlimited"}).copy_values(infile.variable("var_float").require()),
-                               "Variable type sizes do not match: test_copy.nc:var_temp1 and test.nc:var_float", netCDF::Exception);
+                               "Variable types do not match: test_copy.nc:var_temp1 and test.nc:var_float", netCDF::Exception);
+        REQUIRE_THROWS_WITH_AS(outfile.add_variable<int>("var_temp_same_size", {"dim_unlimited"}).copy_values(infile.variable("var_float").require()),
+                               "Variable types do not match: test_copy.nc:var_temp_same_size and test.nc:var_float", netCDF::Exception);
         REQUIRE_THROWS_WITH_AS(outfile.add_variable<unsigned char>("var_temp2", {"dim_with_size"}).copy_values(infile.variable("var_char1").require()),
                                "Variable dimension counts do not match: test_copy.nc:var_temp2 and test.nc:var_char1", netCDF::Exception);
         REQUIRE_THROWS_WITH_AS(outfile.add_variable<short>("var_temp3", {"dim_two"}).copy_values(infile.variable("var_short").require()),
                                "Variable sizes do not match: test_copy.nc:var_temp3 and test.nc:var_short", netCDF::Exception);
+        REQUIRE_THROWS_WITH_AS(infile.variable("var_char1").require().copy_values(infile.variable("var_char2").require()),
+                               "Variable types do not match: test.nc:var_char1 and test.nc:var_char2", netCDF::Exception);
         auto type_temp = outfile.add_type_compound<TypeOpaque>("type_compound");
         type_temp.add_compound_field<decltype(TypeOpaque::c)>("c", offsetof(TypeOpaque, c));
         REQUIRE_THROWS_WITH_AS(outfile.add_attribute("att_temp").copy_values(infile.group("group").require().attribute("group_att_compound").require()),

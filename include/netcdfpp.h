@@ -185,12 +185,26 @@ namespace detail
 
 constexpr bool is_user_type(nc_type type) { return type >= NC_FIRSTUSERTYPEID; }
 
+template<typename T>
+inline T* data_or_null(std::vector<T>& v)
+{
+    return v.empty() ? nullptr : &v[0];
+}
+
+template<typename T>
+inline const T* data_or_null(const std::vector<T>& v)
+{
+    return v.empty() ? nullptr : &v[0];
+}
+
 inline std::vector<std::string> process_char_vector(std::vector<char*>& buf)
 {
     std::vector<std::string> res;
     res.reserve(buf.size());
     std::copy(std::begin(buf), std::end(buf), std::back_inserter(res));
-    nc_free_string(buf.size(), &buf[0]);
+    if (!buf.empty()) {
+        nc_free_string(buf.size(), detail::data_or_null(buf));
+    }
     return res;
 }
 
@@ -377,7 +391,10 @@ class Attribute final : public detail::Object {
         std::size_t len;
         check(nc_inq_attlen(ncid(), othid(), path->name.c_str(), &len));
         std::vector<T> res(len);
-        check(get_internal<T>(ncid(), othid(), path->name.c_str(), &res[0]));
+        if (res.empty()) {
+            return res;
+        }
+        check(get_internal<T>(ncid(), othid(), path->name.c_str(), detail::data_or_null(res)));
         return res;
     }
 
@@ -425,7 +442,7 @@ class Attribute final : public detail::Object {
     void set(const std::vector<T>& v)
     {
         static_assert(Type<T>::is_atomic, "For user type attributes use Attribute::set(const std::vector<T>& v, const UserType& type)");
-        check(set_internal<T>(ncid(), othid(), path->name.c_str(), v.size(), &v[0]));
+        check(set_internal<T>(ncid(), othid(), path->name.c_str(), v.size(), detail::data_or_null(v)));
     }
 
     template<typename T>
@@ -526,7 +543,7 @@ class Dimension final : public detail::Object {
             return false;
         }
         std::vector<int> ids(len);
-        check(nc_inq_unlimdims(path->parent->id, nullptr, &ids[0]));
+        check(nc_inq_unlimdims(path->parent->id, nullptr, detail::data_or_null(ids)));
         return std::find(std::begin(ids), std::end(ids), path->id) != std::end(ids);
     }
 
@@ -723,7 +740,7 @@ class Group : public detail::Object {
         }
 
         std::vector<int> ids(count);
-        check(nc_inq_dimids(path->id, &count, &ids[0], 0));
+        check(nc_inq_dimids(path->id, &count, detail::data_or_null(ids), 0));
 
         char name[NC_MAX_NAME + 1];
         std::vector<Dimension> res;
@@ -756,7 +773,7 @@ class Group : public detail::Object {
         }
 
         std::vector<int> ids(count);
-        check(nc_inq_grps(path->id, nullptr, &ids[0]));
+        check(nc_inq_grps(path->id, nullptr, detail::data_or_null(ids)));
 
         char name[NC_MAX_NAME + 1];
         std::vector<Group> res;
@@ -922,8 +939,13 @@ class UserType final : public detail::Object {
     /// Adds an array field to a compound type.
     UserType add_compound_field_array(const std::string& name, std::size_t offset, const std::vector<int>& dim_sizes)
     {
-        check(nc_insert_array_compound(path->parent->id, path->id, name.c_str(), offset, Type<typename std::remove_all_extents<T>::type>::id, dim_sizes.size(),
-                                       &dim_sizes[0]));
+        check(nc_insert_array_compound(path->parent->id,
+                                       path->id,
+                                       name.c_str(),
+                                       offset,
+                                       Type<typename std::remove_all_extents<T>::type>::id,
+                                       dim_sizes.size(),
+                                       detail::data_or_null(dim_sizes)));
         return *this;
     }
 
@@ -946,7 +968,7 @@ class UserType final : public detail::Object {
             check(nc_inq_compound_fieldndims(path->parent->id, path->id, i, &dims_count));
             CompoundField f;
             f.dimensions.resize(dims_count);
-            check(nc_inq_compound_field(path->parent->id, path->id, i, name, &f.offset, &f.type, nullptr, f.dimensions.empty() ? nullptr : &f.dimensions[0]));
+            check(nc_inq_compound_field(path->parent->id, path->id, i, name, &f.offset, &f.type, nullptr, detail::data_or_null(f.dimensions)));
             f.name = name;
             res.emplace_back(std::move(f));
         }
@@ -1041,8 +1063,30 @@ class Variable final : public detail::Object {
             return {};
         }
         std::vector<int> ids(count);
-        check(nc_inq_vardimid(path->parent->id, path->id, &ids[0]));
+        check(nc_inq_vardimid(path->parent->id, path->id, detail::data_or_null(ids)));
         return ids;
+    }
+
+    static std::string type_name(int ncid_p, nc_type type_p)
+    {
+        char name[NC_MAX_NAME + 1];
+        if (nc_inq_type(ncid_p, type_p, name, nullptr) != NC_NOERR) {
+            return "";
+        }
+        return name;
+    }
+
+    static bool same_type_for_copy(int this_ncid, nc_type this_type, int oth_ncid, nc_type oth_type)
+    {
+        const auto this_is_user = detail::is_user_type(this_type);
+        const auto oth_is_user  = detail::is_user_type(oth_type);
+        if (this_is_user != oth_is_user) {
+            return false;
+        }
+        if (!this_is_user) {
+            return this_type == oth_type;
+        }
+        return type_name(this_ncid, this_type) == type_name(oth_ncid, oth_type);
     }
 
     std::size_t size(const std::size_t* /* start */, const std::size_t* count) const
@@ -1130,10 +1174,16 @@ class Variable final : public detail::Object {
     /// Copies raw values from another variable after checking shape and type size.
     void copy_values(const Variable& v)
     {
+        const auto this_type = type();
+        const auto oth_type  = v.type();
+        if (!same_type_for_copy(path->parent->id, this_type, v.path->parent->id, oth_type)) {
+            throw Exception(NC_EVARMETA, "Variable types do not match: " + path->get_full_path() + " and " + v.path->get_full_path());
+        }
+
         std::size_t this_type_len;
-        check(nc_inq_type(path->parent->id, type(), nullptr, &this_type_len));
+        check(nc_inq_type(path->parent->id, this_type, nullptr, &this_type_len));
         std::size_t oth_type_len;
-        check(nc_inq_type(v.path->parent->id, v.type(), nullptr, &oth_type_len));
+        check(nc_inq_type(v.path->parent->id, oth_type, nullptr, &oth_type_len));
 
         if (this_type_len != oth_type_len) {
             throw Exception(NC_EVARMETA, "Variable type sizes do not match: " + path->get_full_path() + " and " + v.path->get_full_path());
@@ -1154,8 +1204,13 @@ class Variable final : public detail::Object {
         std::vector<std::size_t> index(this_sizes.size(), 0);
 
         std::vector<char> buf(this_type_len * v.size());
-        check(nc_get_vara(v.path->parent->id, v.path->id, &index[0], &oth_sizes[0], &buf[0]));
-        check(nc_put_vara(path->parent->id, path->id, &index[0], &oth_sizes[0], &buf[0]));
+        if (this_sizes.empty()) {
+            check(nc_get_var(v.path->parent->id, v.path->id, detail::data_or_null(buf)));
+            check(nc_put_var(path->parent->id, path->id, detail::data_or_null(buf)));
+        } else {
+            check(nc_get_vara(v.path->parent->id, v.path->id, detail::data_or_null(index), detail::data_or_null(oth_sizes), detail::data_or_null(buf)));
+            check(nc_put_vara(path->parent->id, path->id, detail::data_or_null(index), detail::data_or_null(oth_sizes), detail::data_or_null(buf)));
+        }
     }
 
     /// Returns the number of dimensions.
@@ -1185,7 +1240,7 @@ class Variable final : public detail::Object {
     {
         int mode;
         std::vector<std::size_t> res(dimension_count());
-        check(nc_inq_var_chunking(path->parent->id, path->id, &mode, &res[0]));
+        check(nc_inq_var_chunking(path->parent->id, path->id, &mode, detail::data_or_null(res)));
         if (mode == NC_CONTIGUOUS) {
             res.clear();
         }
@@ -1198,7 +1253,7 @@ class Variable final : public detail::Object {
         if (chunks.empty()) {
             check(nc_def_var_chunking(path->parent->id, path->id, NC_CONTIGUOUS, nullptr));
         } else {
-            check(nc_def_var_chunking(path->parent->id, path->id, NC_CHUNKED, &chunks[0]));
+            check(nc_def_var_chunking(path->parent->id, path->id, NC_CHUNKED, detail::data_or_null(chunks)));
         }
     }
 
@@ -1320,7 +1375,10 @@ class Variable final : public detail::Object {
     std::vector<T> get() const
     {
         std::vector<T> res(size());
-        read(&res[0]);
+        if (res.empty()) {
+            return res;
+        }
+        read(detail::data_or_null(res));
         return res;
     }
     template<typename T>
@@ -1336,7 +1394,10 @@ class Variable final : public detail::Object {
     std::vector<T> get(const std::size_t* start, const std::size_t* count) const
     {
         std::vector<T> res(size(start, count));
-        read(&res[0], start, count);
+        if (res.empty()) {
+            return res;
+        }
+        read(detail::data_or_null(res), start, count);
         return res;
     }
     template<typename T>
@@ -1344,7 +1405,10 @@ class Variable final : public detail::Object {
     std::vector<T> get(const std::size_t* start, const std::size_t* count, const std::ptrdiff_t* stride) const
     {
         std::vector<T> res(size(start, count));
-        read(&res[0], start, count, stride);
+        if (res.empty()) {
+            return res;
+        }
+        read(detail::data_or_null(res), start, count, stride);
         return res;
     }
 
@@ -1436,7 +1500,7 @@ class Variable final : public detail::Object {
     /// Writes the whole variable from a vector.
     void set(const std::vector<T>& v)
     {
-        write(&v[0]);
+        write(detail::data_or_null(v));
     }
     template<typename T>
     /// Writes one value by raw NetCDF index pointer.
@@ -1456,19 +1520,19 @@ class Variable final : public detail::Object {
     /// Writes a hyperslab from a vector.
     void set(const std::vector<T>& v, const std::size_t* start, const std::size_t* count)
     {
-        write(&v[0], start, count);
+        write(detail::data_or_null(v), start, count);
     }
     template<typename T>
     /// Writes a strided hyperslab from a vector.
     void set(const std::vector<T>& v, const std::size_t* start, const std::size_t* count, const std::ptrdiff_t* stride)
     {
-        write(&v[0], start, count, stride);
+        write(detail::data_or_null(v), start, count, stride);
     }
     template<typename T>
     /// Writes mapped data from a vector.
     void set(const std::vector<T>& v, const std::size_t* start, const std::size_t* count, const std::ptrdiff_t* stride, const std::ptrdiff_t* imap)
     {
-        write(&v[0], start, count, stride, imap);
+        write(detail::data_or_null(v), start, count, stride, imap);
     }
 
     template<typename T, int N>
@@ -1645,8 +1709,10 @@ inline void Attribute::copy_values(const Attribute& a)
 
     const auto oth_size = a.size();
     std::vector<char> buf(type_len * oth_size);
-    check(nc_get_att(a.ncid(), a.othid(), a.name().c_str(), &buf[0]));
-    check(nc_put_att(ncid(), othid(), path->name.c_str(), type_l, oth_size, &buf[0]));
+    if (!buf.empty()) {
+        check(nc_get_att(a.ncid(), a.othid(), a.name().c_str(), detail::data_or_null(buf)));
+    }
+    check(nc_put_att(ncid(), othid(), path->name.c_str(), type_l, oth_size, detail::data_or_null(buf)));
 }
 
 template<>
@@ -1654,6 +1720,9 @@ inline std::vector<std::string> Attribute::get() const
 {
     std::size_t len;
     check(nc_inq_attlen(ncid(), othid(), path->name.c_str(), &len));
+    if (len == 0) {
+        return {};
+    }
     char** buf = static_cast<char**>(std::malloc(len * sizeof(char*)));
     check(nc_get_att_string(ncid(), othid(), path->name.c_str(), buf));
     return detail::process_char_vector(buf, len);
@@ -1663,26 +1732,26 @@ template<>
 inline void Attribute::set(const std::vector<std::string>& v)
 {
     auto buf = detail::process_string_vector(v);
-    check(nc_put_att_string(ncid(), othid(), path->name.c_str(), buf.size(), &buf[0]));
+    check(nc_put_att_string(ncid(), othid(), path->name.c_str(), buf.size(), detail::data_or_null(buf)));
 }
 
 template<>
 inline void Attribute::set(const std::vector<const char*>& v)
 {
-    check(nc_put_att_string(ncid(), othid(), path->name.c_str(), v.size(), const_cast<const char**>(&v[0])));
+    check(nc_put_att_string(ncid(), othid(), path->name.c_str(), v.size(), const_cast<const char**>(detail::data_or_null(v))));
 }
 
 template<>
 inline void Attribute::set(const std::vector<char*>& v)
 {
-    check(nc_put_att_string(ncid(), othid(), path->name.c_str(), v.size(), const_cast<const char**>(&v[0])));
+    check(nc_put_att_string(ncid(), othid(), path->name.c_str(), v.size(), const_cast<const char**>(detail::data_or_null(v))));
 }
 
 template<typename T>
 inline void Attribute::set(const std::vector<T>& v, const UserType& type)
 {
     static_assert(!Type<T>::is_atomic, "Should be of user type");
-    check(nc_put_att(ncid(), othid(), path->name.c_str(), type.id(), v.size(), &v[0]));
+    check(nc_put_att(ncid(), othid(), path->name.c_str(), type.id(), v.size(), detail::data_or_null(v)));
 }
 template<typename T>
 inline void Attribute::set(const T& v, const UserType& type)
@@ -1773,8 +1842,13 @@ inline UserType Group::add_user_type(const UserType& t)
                 if (field.dimensions.empty()) {
                     check(nc_insert_compound(path->id, res.id(), field.name.c_str(), field.offset, field.type));
                 } else {
-                    check(nc_insert_array_compound(path->id, res.id(), field.name.c_str(), field.offset, field.type, static_cast<int>(field.dimensions.size()),
-                                                   &field.dimensions[0]));
+                    check(nc_insert_array_compound(path->id,
+                                                   res.id(),
+                                                   field.name.c_str(),
+                                                   field.offset,
+                                                   field.type,
+                                                   static_cast<int>(field.dimensions.size()),
+                                                   detail::data_or_null(field.dimensions)));
                 }
             }
             return res;
@@ -1814,7 +1888,7 @@ inline Variable Group::add_variable(std::string name, const UserType& type, cons
 inline Variable Group::add_variable(std::string name, nc_type type, const std::vector<int>& dims)
 {
     int id;
-    check(nc_def_var(path->id, name.c_str(), type, static_cast<int>(dims.size()), &dims[0], &id));
+    check(nc_def_var(path->id, name.c_str(), type, static_cast<int>(dims.size()), detail::data_or_null(dims), &id));
     return Variable(std::make_shared<detail::Path>(detail::Path{ std::move(name), id, false, path }));
 }
 inline Variable Group::add_variable(std::string name, nc_type type, const std::vector<Dimension>& dims)
@@ -1899,14 +1973,14 @@ inline Variable Group::add_variable(const Variable& v, bool with_values)
 
 inline std::vector<UserType> Group::user_types() const
 {
-        int count;
-        check(nc_inq_typeids(path->id, &count, nullptr));
-        if (count == 0) {
-            return {};
-        }
+    int count;
+    check(nc_inq_typeids(path->id, &count, nullptr));
+    if (count == 0) {
+        return {};
+    }
 
-        std::vector<int> ids(count);
-        check(nc_inq_typeids(path->id, nullptr, &ids[0]));
+    std::vector<int> ids(count);
+    check(nc_inq_typeids(path->id, nullptr, detail::data_or_null(ids)));
 
     char name[NC_MAX_NAME + 1];
     std::vector<UserType> res;
@@ -1921,14 +1995,14 @@ inline std::vector<UserType> Group::user_types() const
 
 inline std::vector<Variable> Group::variables() const
 {
-        int count;
-        check(nc_inq_varids(path->id, &count, nullptr));
-        if (count == 0) {
-            return {};
-        }
+    int count;
+    check(nc_inq_varids(path->id, &count, nullptr));
+    if (count == 0) {
+        return {};
+    }
 
-        std::vector<int> ids(count);
-        check(nc_inq_varids(path->id, nullptr, &ids[0]));
+    std::vector<int> ids(count);
+    check(nc_inq_varids(path->id, nullptr, detail::data_or_null(ids)));
 
     char name[NC_MAX_NAME + 1];
     std::vector<Variable> res;
@@ -1944,7 +2018,10 @@ template<>
 inline std::vector<std::string> Variable::get() const
 {
     std::vector<char*> buf(size());
-    check(nc_get_var_string(path->parent->id, path->id, &buf[0]));
+    if (buf.empty()) {
+        return {};
+    }
+    check(nc_get_var_string(path->parent->id, path->id, detail::data_or_null(buf)));
     return detail::process_char_vector(buf);
 }
 template<>
@@ -1960,14 +2037,20 @@ template<>
 inline std::vector<std::string> Variable::get(const std::size_t* start, const std::size_t* count) const
 {
     std::vector<char*> buf(size(start, count));
-    check(nc_get_vara_string(path->parent->id, path->id, start, count, &buf[0]));
+    if (buf.empty()) {
+        return {};
+    }
+    check(nc_get_vara_string(path->parent->id, path->id, start, count, detail::data_or_null(buf)));
     return detail::process_char_vector(buf);
 }
 template<>
 inline std::vector<std::string> Variable::get(const std::size_t* start, const std::size_t* count, const std::ptrdiff_t* stride) const
 {
     std::vector<char*> buf(size(start, count));
-    check(nc_get_vars_string(path->parent->id, path->id, start, count, stride, &buf[0]));
+    if (buf.empty()) {
+        return {};
+    }
+    check(nc_get_vars_string(path->parent->id, path->id, start, count, stride, detail::data_or_null(buf)));
     return detail::process_char_vector(buf);
 }
 
@@ -1975,7 +2058,7 @@ template<>
 inline void Variable::set(const std::vector<std::string>& v)
 {
     auto buf = detail::process_string_vector(v);
-    check(nc_put_var_string(path->parent->id, path->id, &buf[0]));
+    check(nc_put_var_string(path->parent->id, path->id, detail::data_or_null(buf)));
 }
 template<>
 inline void Variable::set(const std::string& v, const std::size_t* index)
@@ -1992,20 +2075,20 @@ template<>
 inline void Variable::set(const std::vector<std::string>& v, const std::size_t* start, const std::size_t* count)
 {
     auto buf = detail::process_string_vector(v);
-    check(nc_put_vara_string(path->parent->id, path->id, start, count, &buf[0]));
+    check(nc_put_vara_string(path->parent->id, path->id, start, count, detail::data_or_null(buf)));
 }
 template<>
 inline void Variable::set(const std::vector<std::string>& v, const std::size_t* start, const std::size_t* count, const std::ptrdiff_t* stride)
 {
     auto buf = detail::process_string_vector(v);
-    check(nc_put_vars_string(path->parent->id, path->id, start, count, stride, &buf[0]));
+    check(nc_put_vars_string(path->parent->id, path->id, start, count, stride, detail::data_or_null(buf)));
 }
 template<>
 inline void Variable::set(
         const std::vector<std::string>& v, const std::size_t* start, const std::size_t* count, const std::ptrdiff_t* stride, const std::ptrdiff_t* imap)
 {
     auto buf = detail::process_string_vector(v);
-    check(nc_put_varm_string(path->parent->id, path->id, start, count, stride, imap, &buf[0]));
+    check(nc_put_varm_string(path->parent->id, path->id, start, count, stride, imap, detail::data_or_null(buf)));
 }
 
 #define NETCDFPP_IMPL_ATTRIBUTE_GET(type, name)                                                    \

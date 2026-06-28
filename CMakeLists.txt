@@ -29,7 +29,7 @@ endif()
 
 add_custom_target(run_main_test
   COMMAND test_netcdfpp
-  BYPRODUCTS test.nc test_copy.nc
+  BYPRODUCTS test.nc test_copy.nc test_empty.nc
   WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
   DEPENDS test_netcdfpp)
 
