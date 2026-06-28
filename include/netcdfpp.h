@@ -22,6 +22,11 @@
   SOFTWARE.
 */
 
+/// @file netcdfpp.h
+/// Header-only C++ wrapper for the NetCDF-C API.
+///
+/// The public API is in the netCDF namespace. Most operations forward to the
+/// NetCDF-C library and throw netCDF::Exception on NetCDF errors.
 // Full repository: https://github.com/swillner/netcdfpp
 
 #ifndef NETCDFPP_H
@@ -88,6 +93,9 @@ NETCDFPP_IMPL_TYPE(std::uint64_t, NC_UINT64)
 NETCDFPP_IMPL_TYPE(std::uint8_t, NC_UBYTE)
 
 template<typename T, typename Function>
+/// Calls a callable with a default value of the C++ type matching a NetCDF atomic type.
+///
+/// @throws std::runtime_error if the NetCDF type has no supported C++ mapping.
 inline T for_type(nc_type t, Function&& f)
 {
     switch (t) {
@@ -144,12 +152,19 @@ inline T for_type(nc_type t, Function&& f)
     }
 }
 
+/// Exception thrown when a NetCDF-C call fails.
+///
+/// The message includes the NetCDF error text and the path of the affected
+/// file, group, variable, dimension, attribute, or user-defined type.
 class Exception final : public std::runtime_error {
   private:
     int ret;
 
   public:
+    /// Creates an exception with the NetCDF return code and a complete message.
     explicit Exception(int r, std::string s) : std::runtime_error(std::move(s)), ret(r) {}
+
+    /// Returns the NetCDF-C return code that caused the exception.
     int return_code() const { return ret; }
 };
 
@@ -277,6 +292,11 @@ class Object {
 } // namespace detail
 
 template<typename T>
+/// Optional result returned by object lookup functions.
+///
+/// `Maybe<T>` is false when the requested object does not exist. Call require()
+/// to either receive the object or throw netCDF::Exception with a not-found
+/// message.
 class Maybe final {
   private:
     std::shared_ptr<detail::Path> path;
@@ -289,6 +309,7 @@ class Maybe final {
   public:
     explicit Maybe(std::shared_ptr<detail::Path> path_p) : path(std::move(path_p)) {}
 
+    /// Returns the object or throws netCDF::Exception if the lookup failed.
     inline T require() const
     {
         if (!valid()) {
@@ -297,10 +318,14 @@ class Maybe final {
         return T(path);
     }
 
+    /// Returns true when the lookup found an object.
     inline bool valid() const { return path->id >= 0; }
+
+    /// Returns true when the lookup found an object.
     inline operator bool() const { return valid(); }
 };
 
+/// NetCDF attribute attached to a group or variable.
 class Attribute final : public detail::Object {
     friend class Group;
     friend class Maybe<Attribute>;
@@ -338,9 +363,14 @@ class Attribute final : public detail::Object {
     int set_internal(int ncid_p, int othid_p, const char* name_p, std::size_t len, const T* v);
 
   public:
+    /// Copies the value and type metadata from another attribute.
     void copy_values(const Attribute& a);
 
     template<typename T>
+    /// Reads the attribute as a vector of values.
+    ///
+    /// Use get_string() for classic text attributes. Use get<std::string>() for
+    /// NetCDF string attributes.
     std::vector<T> get() const
     {
         static_assert(!std::is_same<char*, T>::value && !std::is_same<const char*, T>::value, "Use get_string() for reading string attributes");
@@ -351,6 +381,7 @@ class Attribute final : public detail::Object {
         return res;
     }
 
+    /// Reads a classic NetCDF text attribute as a C++ string.
     std::string get_string() const
     {
         std::size_t len;
@@ -361,8 +392,10 @@ class Attribute final : public detail::Object {
         return std::string(&buf[0]);
     }
 
+    /// Returns true when this attribute is attached to a group rather than a variable.
     bool is_group_attribute() const { return path->parent->is_group; }
 
+    /// Returns the parent group for group attributes.
     Maybe<Group> parent_group() const
     {
         if (is_group_attribute()) {
@@ -371,6 +404,7 @@ class Attribute final : public detail::Object {
         return Maybe<Group>(std::make_shared<detail::Path>(detail::Path{ "..", -1, true, path }));
     }
 
+    /// Returns the parent variable for variable attributes.
     Maybe<Variable> parent_variable() const
     {
         if (!is_group_attribute()) {
@@ -379,6 +413,7 @@ class Attribute final : public detail::Object {
         return Maybe<Variable>(std::make_shared<detail::Path>(detail::Path{ "..", -1, true, path }));
     }
 
+    /// Renames the attribute in place.
     void rename(std::string name)
     {
         check(nc_rename_att(ncid(), othid(), path->name.c_str(), name.c_str()));
@@ -386,6 +421,7 @@ class Attribute final : public detail::Object {
     }
 
     template<typename T>
+    /// Writes a vector of atomic values to the attribute.
     void set(const std::vector<T>& v)
     {
         static_assert(Type<T>::is_atomic, "For user type attributes use Attribute::set(const std::vector<T>& v, const UserType& type)");
@@ -393,21 +429,26 @@ class Attribute final : public detail::Object {
     }
 
     template<typename T>
+    /// Writes a vector of values using a user-defined NetCDF type.
     void set(const std::vector<T>& v, const UserType& type);
     template<typename T>
+    /// Writes one value using a user-defined NetCDF type.
     void set(const T& v, const UserType& type);
 
     template<typename T>
+    /// Writes a string attribute.
     typename std::enable_if<std::is_same<std::string, T>::value, void>::type set(T v)
     {
         check(set_internal(ncid(), othid(), path->name.c_str(), v.length() + 1, v.c_str()));
     }
     template<typename T>
+    /// Writes a string attribute from a C string.
     typename std::enable_if<std::is_same<const char*, T>::value || std::is_same<char*, T>::value, void>::type set(T v)
     {
         check(set_internal(ncid(), othid(), path->name.c_str(), std::strlen(v) + 1, v));
     }
     template<typename T>
+    /// Writes one atomic value to the attribute.
     typename std::enable_if<!std::is_same<std::string, T>::value && !std::is_same<const char*, T>::value && !std::is_same<char*, T>::value, void>::type set(
             T v)
     {
@@ -415,6 +456,7 @@ class Attribute final : public detail::Object {
         check(set_internal<T>(ncid(), othid(), path->name.c_str(), 1, &v));
     }
 
+    /// Returns the number of values stored in the attribute.
     std::size_t size() const
     {
         std::size_t len;
@@ -422,6 +464,7 @@ class Attribute final : public detail::Object {
         return len;
     }
 
+    /// Returns the NetCDF type id of the attribute.
     nc_type type() const
     {
         int res;
@@ -429,6 +472,7 @@ class Attribute final : public detail::Object {
         return res;
     }
 
+    /// Returns the NetCDF type name of the attribute.
     std::string type_name() const
     {
         char name[NC_MAX_NAME + 1];
@@ -436,6 +480,7 @@ class Attribute final : public detail::Object {
         return name;
     }
 
+    /// Returns this attribute or throws if its NetCDF type name differs.
     Attribute require_type(const std::string& name) const
     {
         const auto name_l = type_name();
@@ -445,9 +490,11 @@ class Attribute final : public detail::Object {
         return *this;
     }
 
+    /// Returns the user-defined type for this attribute, if it has one.
     Maybe<UserType> user_type() const;
 };
 
+/// NetCDF dimension.
 class Dimension final : public detail::Object {
     friend class Group;
     friend class Maybe<Dimension>;
@@ -460,6 +507,7 @@ class Dimension final : public detail::Object {
     explicit Dimension(std::shared_ptr<detail::Path> path_p) : detail::Object(std::move(path_p)) {}
 
   public:
+    /// Returns the current dimension length.
     std::size_t size() const
     {
         if (!size_read) {
@@ -469,17 +517,23 @@ class Dimension final : public detail::Object {
         return size_m;
     }
 
+    /// Returns true when the dimension is unlimited.
     bool is_unlimited() const
     {
         int len;
         check(nc_inq_unlimdims(path->parent->id, &len, nullptr));
+        if (len == 0) {
+            return false;
+        }
         std::vector<int> ids(len);
         check(nc_inq_unlimdims(path->parent->id, nullptr, &ids[0]));
         return std::find(std::begin(ids), std::end(ids), path->id) != std::end(ids);
     }
 
+    /// Returns the parent group.
     Group parent() const;
 
+    /// Renames the dimension in place.
     void rename(std::string name)
     {
         check(nc_rename_dim(path->parent->id, path->id, name.c_str()));
@@ -487,6 +541,7 @@ class Dimension final : public detail::Object {
     }
 };
 
+/// NetCDF group, including the root group represented by File.
 class Group : public detail::Object {
     friend class Attribute;
     friend class Dimension;
@@ -498,7 +553,10 @@ class Group : public detail::Object {
     explicit Group(std::shared_ptr<detail::Path> path_p) : detail::Object(std::move(path_p)) {}
 
   public:
+    /// Defines an attribute handle. The attribute is created when a value is written.
     Attribute add_attribute(std::string name) { return Attribute(std::make_shared<detail::Path>(detail::Path{ std::move(name), -1, false, path })); }
+
+    /// Copies an attribute into this group.
     Attribute add_attribute(const Attribute& a)
     {
         auto res = add_attribute(a.name());
@@ -506,21 +564,27 @@ class Group : public detail::Object {
         return res;
     }
 
+    /// Defines an unlimited dimension.
     Dimension add_dimension(std::string name) { return add_dimension(std::move(name), NC_UNLIMITED); }
+
+    /// Defines a fixed-size dimension.
     Dimension add_dimension(std::string name, std::size_t len)
     {
         int id;
         check(nc_def_dim(path->id, name.c_str(), len, &id));
         return Dimension(std::make_shared<detail::Path>(detail::Path{ std::move(name), id, false, path }));
     }
+    /// Copies a dimension into this group.
     Dimension add_dimension(const Dimension& d) { return add_dimension(d.name(), d.is_unlimited() ? NC_UNLIMITED : d.size()); }
 
+    /// Defines a child group.
     Group add_group(std::string name)
     {
         int id;
         check(nc_def_grp(path->id, name.c_str(), &id));
         return Group(std::make_shared<detail::Path>(detail::Path{ std::move(name), id, true, path }));
     }
+    /// Copies a group into this group.
     Group add_group(const Group& g, bool variable_values = false)
     {
         auto res = add_group(g.name());
@@ -528,36 +592,55 @@ class Group : public detail::Object {
         return res;
     }
 
+    /// Defines a compound user type with an explicit byte size.
     UserType add_type_compound(std::string name, std::size_t bytes_size);
     template<typename T>
+    /// Defines a compound user type with `sizeof(T)`.
     UserType add_type_compound(std::string name);
 
+    /// Defines an enum user type with an explicit NetCDF base type.
     UserType add_type_enum(std::string name, nc_type basetype);
     template<typename T>
+    /// Defines an enum user type using the C++ enum underlying type.
     UserType add_type_enum(std::string name);
 
+    /// Defines a variable-length user type with an explicit NetCDF base type.
     UserType add_type_vlen(std::string name, nc_type basetype);
     template<typename T>
+    /// Defines a variable-length user type using the mapped NetCDF type of T.
     UserType add_type_vlen(std::string name);
 
+    /// Defines an opaque user type.
     UserType add_type_opaque(std::string name, std::size_t bytes_size);
 
+    /// Copies a user-defined type into this group.
     UserType add_user_type(const UserType& t);
 
+    /// Defines a variable using a user-defined type and dimension ids.
     Variable add_variable(std::string name, const UserType& type, const std::vector<int>& dims);
+    /// Defines a variable using a user-defined type and dimension objects.
     Variable add_variable(std::string name, const UserType& type, const std::vector<Dimension>& dims);
+    /// Defines a variable using a user-defined type and dimension names.
     Variable add_variable(std::string name, const UserType& type, const std::vector<std::string>& dims);
+    /// Defines a variable using a NetCDF type id and dimension ids.
     Variable add_variable(std::string name, nc_type type, const std::vector<int>& dims);
+    /// Defines a variable using a NetCDF type id and dimension objects.
     Variable add_variable(std::string name, nc_type type, const std::vector<Dimension>& dims);
+    /// Defines a variable using a NetCDF type id and dimension names.
     Variable add_variable(std::string name, nc_type type, const std::vector<std::string>& dims);
     template<typename T>
+    /// Defines a variable using the mapped NetCDF type of T and dimension ids.
     Variable add_variable(std::string name, const std::vector<int>& dims);
     template<typename T>
+    /// Defines a variable using the mapped NetCDF type of T and dimension objects.
     Variable add_variable(std::string name, const std::vector<Dimension>& dims);
     template<typename T>
+    /// Defines a variable using the mapped NetCDF type of T and dimension names.
     Variable add_variable(std::string name, const std::vector<std::string>& dims);
+    /// Copies a variable definition into this group.
     Variable add_variable(const Variable& v, bool with_values = false);
 
+    /// Looks up a group attribute by name.
     Maybe<Attribute> attribute(std::string name) const
     {
         auto res       = std::make_shared<detail::Path>(detail::Path{ std::move(name), -1, false, path });
@@ -568,6 +651,7 @@ class Group : public detail::Object {
         return Maybe<Attribute>(std::move(res));
     }
 
+    /// Returns all group attributes.
     std::vector<Attribute> attributes() const
     {
         int count;
@@ -582,18 +666,21 @@ class Group : public detail::Object {
         return res;
     }
 
+    /// Copies all group attributes from another group.
     void copy_attributes(const Group& g)
     {
         for (const auto& it : g.attributes()) {
             add_attribute(it);
         }
     }
+    /// Copies all dimensions from another group.
     void copy_dimensions(const Group& g)
     {
         for (const auto& it : g.dimensions()) {
             add_dimension(it);
         }
     }
+    /// Copies attributes, dimensions, user types, variables, and child groups.
     void copy_from(const Group& g, bool variable_values = false)
     {
         copy_attributes(g);
@@ -602,15 +689,20 @@ class Group : public detail::Object {
         copy_variables(g, variable_values);
         copy_groups(g, variable_values);
     }
+    /// Copies child groups from another group.
     void copy_groups(const Group& g, bool variable_values = false)
     {
         for (const auto& it : g.groups()) {
             add_group(it, variable_values);
         }
     }
+    /// Copies user-defined types from another group.
     void copy_user_types(const Group& g);
+
+    /// Copies variables from another group.
     void copy_variables(const Group& g, bool variable_values = false);
 
+    /// Looks up a dimension by name.
     Maybe<Dimension> dimension(std::string name) const
     {
         auto res       = std::make_shared<detail::Path>(detail::Path{ std::move(name), -1, false, path });
@@ -621,10 +713,14 @@ class Group : public detail::Object {
         return Maybe<Dimension>(std::move(res));
     }
 
+    /// Returns all dimensions visible in this group.
     std::vector<Dimension> dimensions() const
     {
         int count;
         check(nc_inq_ndims(path->id, &count));
+        if (count == 0) {
+            return {};
+        }
 
         std::vector<int> ids(count);
         check(nc_inq_dimids(path->id, &count, &ids[0], 0));
@@ -639,6 +735,7 @@ class Group : public detail::Object {
         return res;
     }
 
+    /// Looks up a child group by name.
     Maybe<Group> group(std::string name) const
     {
         auto res       = std::make_shared<detail::Path>(detail::Path{ std::move(name), -1, true, path });
@@ -649,10 +746,14 @@ class Group : public detail::Object {
         return Maybe<Group>(std::move(res));
     }
 
+    /// Returns all direct child groups.
     std::vector<Group> groups() const
     {
         int count;
         check(nc_inq_grps(path->id, &count, nullptr));
+        if (count == 0) {
+            return {};
+        }
 
         std::vector<int> ids(count);
         check(nc_inq_grps(path->id, nullptr, &ids[0]));
@@ -667,12 +768,14 @@ class Group : public detail::Object {
         return res;
     }
 
+    /// Renames the group in place.
     void rename(std::string name)
     {
         check(nc_rename_grp(path->id, name.c_str()));
         path->name = std::move(name);
     }
 
+    /// Returns the parent group, if this is not the root group.
     Maybe<Group> parent() const
     {
         if (path->parent) {
@@ -681,6 +784,7 @@ class Group : public detail::Object {
         return Maybe<Group>(std::make_shared<detail::Path>(detail::Path{ "..", -1, true, path }));
     }
 
+    /// Looks up a user-defined type by name.
     Maybe<UserType> user_type(std::string name) const
     {
         auto res       = std::make_shared<detail::Path>(detail::Path{ std::move(name), -1, false, path });
@@ -694,8 +798,10 @@ class Group : public detail::Object {
         return Maybe<UserType>(std::move(res));
     }
 
+    /// Returns all user-defined types in this group.
     std::vector<UserType> user_types() const;
 
+    /// Looks up a variable by name.
     Maybe<Variable> variable(std::string name) const
     {
         auto res       = std::make_shared<detail::Path>(detail::Path{ std::move(name), -1, false, path });
@@ -706,16 +812,31 @@ class Group : public detail::Object {
         return Maybe<Variable>(std::move(res));
     }
 
+    /// Returns all variables in this group.
     std::vector<Variable> variables() const;
 };
 
+/// NetCDF file handle and root group.
+///
+/// File owns the NetCDF file id and closes it in the destructor.
 class File final : public Group {
   public:
+    /// Creates a closed file handle.
     File() : Group(std::make_shared<detail::Path>(detail::Path{ "", -1, true, nullptr })) {}
+
+    /// Opens or creates a file.
+    ///
+    /// Modes are `'r'` for read-only, `'a'` for read-write append, and `'w'`
+    /// for creating a NetCDF4 file with clobber semantics.
     File(std::string filename, char mode) : File() { open(std::move(filename), mode); }
+
+    /// Opens or creates a file.
     File(const char* filename, char mode) : File(std::string(filename), mode) {}
+
+    /// Closes the file if it is open.
     ~File() { close(); }
 
+    /// Opens or creates a file, closing any currently open file first.
     void open(std::string filename, char mode)
     {
         close();
@@ -735,6 +856,7 @@ class File final : public Group {
         }
     }
 
+    /// Closes the file if it is open.
     void close()
     {
         if (is_open()) {
@@ -743,21 +865,29 @@ class File final : public Group {
         }
     }
 
+    /// Returns true when this object owns an open NetCDF file id.
     bool is_open() const { return path->id >= 0; }
 
+    /// Flushes buffered changes to disk.
     void sync() const { check(nc_sync(path->id)); }
 };
 
+/// NetCDF user-defined type.
 class UserType final : public detail::Object {
     friend class Group;
     friend class Maybe<UserType>;
     friend class testing::TestUserType;
 
   public:
+    /// Compound field metadata.
     struct CompoundField {
+        /// NetCDF type id of the field.
         nc_type type;
+        /// Field name.
         std::string name;
+        /// Byte offset of the field in the compound type.
         std::size_t offset;
+        /// Array dimensions for array fields; empty for scalar fields.
         std::vector<int> dimensions;
     };
 
@@ -777,9 +907,11 @@ class UserType final : public detail::Object {
     }
 
   public:
+    /// Returns the parent group.
     Group parent() const { return Group(path->parent); }
 
     template<typename T>
+    /// Adds a scalar field to a compound type.
     UserType add_compound_field(const std::string& name, std::size_t offset)
     {
         check(nc_insert_compound(path->parent->id, path->id, name.c_str(), offset, Type<T>::id));
@@ -787,6 +919,7 @@ class UserType final : public detail::Object {
     }
 
     template<typename T>
+    /// Adds an array field to a compound type.
     UserType add_compound_field_array(const std::string& name, std::size_t offset, const std::vector<int>& dim_sizes)
     {
         check(nc_insert_array_compound(path->parent->id, path->id, name.c_str(), offset, Type<typename std::remove_all_extents<T>::type>::id, dim_sizes.size(),
@@ -795,12 +928,14 @@ class UserType final : public detail::Object {
     }
 
     template<typename T>
+    /// Adds an enum member.
     UserType add_enum_member(const std::string& name, T v)
     {
         check(nc_insert_enum(path->parent->id, path->id, name.c_str(), &v));
         return *this;
     }
 
+    /// Returns compound field metadata.
     std::vector<CompoundField> compound_fields() const
     {
         std::vector<CompoundField> res;
@@ -811,7 +946,7 @@ class UserType final : public detail::Object {
             check(nc_inq_compound_fieldndims(path->parent->id, path->id, i, &dims_count));
             CompoundField f;
             f.dimensions.resize(dims_count);
-            check(nc_inq_compound_field(path->parent->id, path->id, i, name, &f.offset, &f.type, nullptr, &f.dimensions[0]));
+            check(nc_inq_compound_field(path->parent->id, path->id, i, name, &f.offset, &f.type, nullptr, f.dimensions.empty() ? nullptr : &f.dimensions[0]));
             f.name = name;
             res.emplace_back(std::move(f));
         }
@@ -819,6 +954,7 @@ class UserType final : public detail::Object {
     }
 
     template<typename T>
+    /// Returns enum members as name/value pairs.
     std::vector<std::pair<std::string, T>> enum_members() const
     {
         std::vector<std::pair<std::string, T>> res;
@@ -832,6 +968,7 @@ class UserType final : public detail::Object {
         return res;
     }
 
+    /// Returns the base NetCDF type of enum and variable-length types.
     nc_type basetype() const
     {
         if (!fields_read) {
@@ -840,6 +977,7 @@ class UserType final : public detail::Object {
         return basetype_m;
     }
 
+    /// Returns the number of fields in a compound type.
     std::size_t fieldscount() const
     {
         if (!fields_read) {
@@ -848,6 +986,7 @@ class UserType final : public detail::Object {
         return fieldscount_m;
     }
 
+    /// Returns the number of members in an enum type.
     std::size_t memberscount() const
     {
         if (!fields_read) {
@@ -856,6 +995,7 @@ class UserType final : public detail::Object {
         return fieldscount_m;
     }
 
+    /// Returns the byte size of the user-defined type.
     std::size_t bytes_size() const
     {
         if (!fields_read) {
@@ -864,6 +1004,7 @@ class UserType final : public detail::Object {
         return size_m;
     }
 
+    /// Returns NC_VLEN, NC_OPAQUE, NC_ENUM, or NC_COMPOUND.
     int typeclass() const
     { // NC_VLEN, NC_OPAQUE, NC_ENUM, or NC_COMPOUND
         if (!fields_read) {
@@ -874,14 +1015,18 @@ class UserType final : public detail::Object {
 };
 
 template<typename T>
+/// RAII wrapper for one NetCDF variable-length value returned by the C API.
 struct VLenElement {
+    /// Number of elements.
     const std::size_t size;
+    /// Pointer to the allocated element data.
     const T* data;
 
     VLenElement() : size(0), data(nullptr) {}
     ~VLenElement() { std::free(const_cast<T*>(data)); }
 };
 
+/// NetCDF variable.
 class Variable final : public detail::Object {
     friend class Group;
     friend class Maybe<Variable>;
@@ -891,7 +1036,11 @@ class Variable final : public detail::Object {
 
     std::vector<int> dimension_ids() const
     {
-        std::vector<int> ids(dimension_count());
+        const auto count = dimension_count();
+        if (count == 0) {
+            return {};
+        }
+        std::vector<int> ids(count);
         check(nc_inq_vardimid(path->parent->id, path->id, &ids[0]));
         return ids;
     }
@@ -909,7 +1058,10 @@ class Variable final : public detail::Object {
     }
 
   public:
+    /// Defines an attribute handle. The attribute is created when a value is written.
     Attribute add_attribute(std::string name) { return Attribute(std::make_shared<detail::Path>(detail::Path{ std::move(name), -1, false, path })); }
+
+    /// Copies an attribute onto this variable.
     Attribute add_attribute(const Attribute& a)
     {
         auto res = add_attribute(a.name());
@@ -917,6 +1069,7 @@ class Variable final : public detail::Object {
         return res;
     }
 
+    /// Looks up a variable attribute by name.
     Maybe<Attribute> attribute(std::string name) const
     {
         auto res       = std::make_shared<detail::Path>(detail::Path{ std::move(name), -1, false, path });
@@ -927,6 +1080,7 @@ class Variable final : public detail::Object {
         return Maybe<Attribute>(std::move(res));
     }
 
+    /// Returns all variable attributes.
     std::vector<Attribute> attributes() const
     {
         int count;
@@ -941,6 +1095,7 @@ class Variable final : public detail::Object {
         return res;
     }
 
+    /// Returns true when the variable dimensions match the supplied names exactly.
     bool check_dimensions(const std::vector<std::string>& names) const
     {
         const auto& dims = dimensions();
@@ -955,6 +1110,7 @@ class Variable final : public detail::Object {
         return true;
     }
 
+    /// Returns this variable or throws if its dimensions do not match.
     Variable require_dimensions(const std::vector<std::string>& names) const
     {
         if (!check_dimensions(names)) {
@@ -963,6 +1119,7 @@ class Variable final : public detail::Object {
         return *this;
     }
 
+    /// Copies all attributes from another variable.
     void copy_attributes(const Variable& v)
     {
         for (const auto& it : v.attributes()) {
@@ -970,6 +1127,7 @@ class Variable final : public detail::Object {
         }
     }
 
+    /// Copies raw values from another variable after checking shape and type size.
     void copy_values(const Variable& v)
     {
         std::size_t this_type_len;
@@ -1000,6 +1158,7 @@ class Variable final : public detail::Object {
         check(nc_put_vara(path->parent->id, path->id, &index[0], &oth_sizes[0], &buf[0]));
     }
 
+    /// Returns the number of dimensions.
     std::size_t dimension_count() const
     {
         int count;
@@ -1007,6 +1166,7 @@ class Variable final : public detail::Object {
         return count;
     }
 
+    /// Returns the variable dimensions.
     std::vector<Dimension> dimensions() const
     {
         const auto ids = dimension_ids();
@@ -1020,6 +1180,7 @@ class Variable final : public detail::Object {
         return res;
     }
 
+    /// Returns chunk sizes, or an empty vector for contiguous storage.
     std::vector<std::size_t> get_chunking() const
     {
         int mode;
@@ -1031,6 +1192,7 @@ class Variable final : public detail::Object {
         return res;
     }
 
+    /// Sets chunked storage, or contiguous storage when chunks is empty.
     void set_chunking(const std::vector<std::size_t>& chunks)
     {
         if (chunks.empty()) {
@@ -1040,8 +1202,10 @@ class Variable final : public detail::Object {
         }
     }
 
+    /// Lets NetCDF choose default chunk sizes.
     void set_default_chunking() { check(nc_def_var_chunking(path->parent->id, path->id, NC_CHUNKED, nullptr)); }
 
+    /// Returns shuffle status and deflate level, or -1 when deflate is disabled.
     std::pair<bool, int> get_compression() const
     {
         int shuffle_filter;
@@ -1051,11 +1215,13 @@ class Variable final : public detail::Object {
         return std::make_pair(shuffle_filter, deflate_filter ? deflate_level : -1);
     }
 
+    /// Sets shuffle and deflate compression.
     void set_compression(bool shuffle_filter, int deflate_level)
     {
         check(nc_def_var_deflate(path->parent->id, path->id, shuffle_filter, deflate_level < 0 ? 0 : 1, deflate_level));
     }
 
+    /// Returns the NetCDF endianness setting.
     int get_endianness() const
     {
         int res;
@@ -1063,9 +1229,10 @@ class Variable final : public detail::Object {
         return res;
     }
 
-    // NC_ENDIAN_NATIVE, NC_ENDIAN_LITTLE, or NC_ENDIAN_BIG
+    /// Sets NC_ENDIAN_NATIVE, NC_ENDIAN_LITTLE, or NC_ENDIAN_BIG.
     void set_endianness(int endianness) { check(nc_def_var_endian(path->parent->id, path->id, endianness)); }
 
+    /// Returns true when Fletcher32 checksums are enabled.
     bool get_checksum_enabled() const
     {
         int res;
@@ -1073,9 +1240,11 @@ class Variable final : public detail::Object {
         return res == NC_FLETCHER32;
     }
 
+    /// Enables or disables Fletcher32 checksums.
     void set_checksum_enabled(bool v) { check(nc_def_var_fletcher32(path->parent->id, path->id, v ? NC_FLETCHER32 : NC_NOCHECKSUM)); }
 
     template<typename T>
+    /// Returns whether fill is enabled and the fill value.
     std::pair<bool, T> get_fill() const
     {
         int no_fill;
@@ -1085,21 +1254,26 @@ class Variable final : public detail::Object {
     }
 
     template<typename T>
+    /// Enables fill and sets the fill value.
     void set_fill(T v)
     {
         check(nc_def_var_fill(path->parent->id, path->id, 0, &v));
     }
 
+    /// Disables fill for this variable.
     void unset_fill() { check(nc_def_var_fill(path->parent->id, path->id, 1, nullptr)); }
 
+    /// Returns the parent group.
     Group parent() const { return Group(path->parent); }
 
+    /// Renames the variable in place.
     void rename(std::string name)
     {
         check(nc_rename_var(path->parent->id, path->id, name.c_str()));
         path->name = std::move(name);
     }
 
+    /// Returns the current size of each dimension.
     std::vector<std::size_t> sizes() const
     {
         std::vector<std::size_t> res;
@@ -1113,6 +1287,7 @@ class Variable final : public detail::Object {
         return res;
     }
 
+    /// Returns the total number of elements.
     std::size_t size() const
     {
         std::size_t res = 1;
@@ -1125,11 +1300,13 @@ class Variable final : public detail::Object {
     }
 
     template<int N>
+    /// Returns the number of elements selected by a hyperslab count.
     std::size_t size(const std::array<std::size_t, N>& start, const std::array<std::size_t, N>& count) const
     {
         return size(&start[0], &count[0]);
     }
 
+    /// Returns this variable or throws if its total element count differs.
     Variable require_size(std::size_t size_p) const
     {
         if (size_p != size()) {
@@ -1139,6 +1316,7 @@ class Variable final : public detail::Object {
     }
 
     template<typename T>
+    /// Reads the whole variable as a vector.
     std::vector<T> get() const
     {
         std::vector<T> res(size());
@@ -1146,6 +1324,7 @@ class Variable final : public detail::Object {
         return res;
     }
     template<typename T>
+    /// Reads one element by raw NetCDF index pointer.
     T get(const std::size_t* index) const
     {
         T res;
@@ -1153,6 +1332,7 @@ class Variable final : public detail::Object {
         return res;
     }
     template<typename T>
+    /// Reads a hyperslab by raw NetCDF start/count pointers.
     std::vector<T> get(const std::size_t* start, const std::size_t* count) const
     {
         std::vector<T> res(size(start, count));
@@ -1160,6 +1340,7 @@ class Variable final : public detail::Object {
         return res;
     }
     template<typename T>
+    /// Reads a strided hyperslab by raw NetCDF pointers.
     std::vector<T> get(const std::size_t* start, const std::size_t* count, const std::ptrdiff_t* stride) const
     {
         std::vector<T> res(size(start, count));
@@ -1168,46 +1349,54 @@ class Variable final : public detail::Object {
     }
 
     template<typename T, int N>
+    /// Reads one element by fixed-rank index.
     T get(const std::array<std::size_t, N>& index) const
     {
         return get<T>(&index[0]);
     }
     template<typename T, int N>
+    /// Reads a fixed-rank hyperslab.
     std::vector<T> get(const std::array<std::size_t, N>& start, const std::array<std::size_t, N>& count) const
     {
         return get<T>(&start[0], &count[0]);
     }
     template<typename T, int N>
+    /// Reads a fixed-rank strided hyperslab.
     std::vector<T> get(const std::array<std::size_t, N>& start, const std::array<std::size_t, N>& count, const std::array<std::ptrdiff_t, N>& stride) const
     {
         return get<T>(&start[0], &count[0], &stride[0]);
     }
 
     template<typename T>
+    /// Reads the whole variable into caller-provided storage.
     void read(T* v) const
     {
         static_assert(!Type<T>::is_atomic || std::is_same<void, T>::value, "Use void or one of the explicitly supported types");
         check(nc_get_var(path->parent->id, path->id, v));
     }
     template<typename T>
+    /// Reads one element into caller-provided storage.
     void read(T* v, const std::size_t* index) const
     {
         static_assert(!Type<T>::is_atomic || std::is_same<void, T>::value, "Use void or one of the explicitly supported types");
         check(nc_get_var1(path->parent->id, path->id, index, v));
     }
     template<typename T>
+    /// Reads a hyperslab into caller-provided storage.
     void read(T* v, const std::size_t* start, const std::size_t* count) const
     {
         static_assert(!Type<T>::is_atomic || std::is_same<void, T>::value, "Use void or one of the explicitly supported types");
         check(nc_get_vara(path->parent->id, path->id, start, count, v));
     }
     template<typename T>
+    /// Reads a strided hyperslab into caller-provided storage.
     void read(T* v, const std::size_t* start, const std::size_t* count, const std::ptrdiff_t* stride) const
     {
         static_assert(!Type<T>::is_atomic || std::is_same<void, T>::value, "Use void or one of the explicitly supported types");
         check(nc_get_vars(path->parent->id, path->id, start, count, stride, v));
     }
     template<typename T>
+    /// Reads mapped data into caller-provided storage.
     void read(T* v, const std::size_t* start, const std::size_t* count, const std::ptrdiff_t* stride, const std::ptrdiff_t* imap) const
     {
         static_assert(std::is_same<void, T>::value, "NetCDF supports mapped access only for atomic types");
@@ -1215,21 +1404,25 @@ class Variable final : public detail::Object {
     }
 
     template<typename T, int N>
+    /// Reads one fixed-rank element into caller-provided storage.
     void read(T* v, const std::array<std::size_t, N>& index) const
     {
         read(v, &index[0]);
     }
     template<typename T, int N>
+    /// Reads a fixed-rank hyperslab into caller-provided storage.
     void read(T* v, const std::array<std::size_t, N>& start, const std::array<std::size_t, N>& count) const
     {
         read(v, &start[0], &count[0]);
     }
     template<typename T, int N>
+    /// Reads a fixed-rank strided hyperslab into caller-provided storage.
     void read(T* v, const std::array<std::size_t, N>& start, const std::array<std::size_t, N>& count, const std::array<std::ptrdiff_t, N>& stride) const
     {
         read(v, &start[0], &count[0], &stride[0]);
     }
     template<typename T, int N>
+    /// Reads fixed-rank mapped data into caller-provided storage.
     void read(T* v,
               const std::array<std::size_t, N>& start,
               const std::array<std::size_t, N>& count,
@@ -1240,49 +1433,58 @@ class Variable final : public detail::Object {
     }
 
     template<typename T>
+    /// Writes the whole variable from a vector.
     void set(const std::vector<T>& v)
     {
         write(&v[0]);
     }
     template<typename T>
+    /// Writes one value by raw NetCDF index pointer.
     typename std::enable_if<Type<T>::is_atomic || std::is_same<const char*, T>::value || std::is_same<char*, T>::value, void>::type set(
             T v, const std::size_t* index)
     {
         write(&v, index);
     }
     template<typename T>
+    /// Writes one non-atomic value by raw NetCDF index pointer.
     typename std::enable_if<!Type<T>::is_atomic && !std::is_same<const char*, T>::value && !std::is_same<char*, T>::value, void>::type set(
             const T& v, const std::size_t* index)
     {
         write(&v, index);
     }
     template<typename T>
+    /// Writes a hyperslab from a vector.
     void set(const std::vector<T>& v, const std::size_t* start, const std::size_t* count)
     {
         write(&v[0], start, count);
     }
     template<typename T>
+    /// Writes a strided hyperslab from a vector.
     void set(const std::vector<T>& v, const std::size_t* start, const std::size_t* count, const std::ptrdiff_t* stride)
     {
         write(&v[0], start, count, stride);
     }
     template<typename T>
+    /// Writes mapped data from a vector.
     void set(const std::vector<T>& v, const std::size_t* start, const std::size_t* count, const std::ptrdiff_t* stride, const std::ptrdiff_t* imap)
     {
         write(&v[0], start, count, stride, imap);
     }
 
     template<typename T, int N>
+    /// Writes one fixed-rank element.
     void set(const T v, const std::array<std::size_t, N>& index)
     {
         set(v, &index[0]);
     }
     template<typename T, int N>
+    /// Writes a fixed-rank hyperslab from a vector.
     void set(const std::vector<T>& v, const std::array<std::size_t, N>& start, const std::array<std::size_t, N>& count)
     {
         set(v, &start[0], &count[0]);
     }
     template<typename T, int N>
+    /// Writes a fixed-rank strided hyperslab from a vector.
     void set(const std::vector<T>& v,
              const std::array<std::size_t, N>& start,
              const std::array<std::size_t, N>& count,
@@ -1291,6 +1493,7 @@ class Variable final : public detail::Object {
         set(v, &start[0], &count[0], &stride[0]);
     }
     template<typename T, int N>
+    /// Writes fixed-rank mapped data from a vector.
     void set(const std::vector<T>& v,
              const std::array<std::size_t, N>& start,
              const std::array<std::size_t, N>& count,
@@ -1301,30 +1504,35 @@ class Variable final : public detail::Object {
     }
 
     template<typename T>
+    /// Writes the whole variable from caller-provided storage.
     void write(const T* v)
     {
         static_assert(!Type<T>::is_atomic || std::is_same<void, T>::value, "Use void or one of the explicitly supported types");
         check(nc_put_var(path->parent->id, path->id, v));
     }
     template<typename T>
+    /// Writes one element from caller-provided storage.
     void write(const T* v, const std::size_t* index)
     {
         static_assert(!Type<T>::is_atomic || std::is_same<void, T>::value, "Use void or one of the explicitly supported types");
         check(nc_put_var1(path->parent->id, path->id, index, v));
     }
     template<typename T>
+    /// Writes a hyperslab from caller-provided storage.
     void write(const T* v, const std::size_t* start, const std::size_t* count)
     {
         static_assert(!Type<T>::is_atomic || std::is_same<void, T>::value, "Use void or one of the explicitly supported types");
         check(nc_put_vara(path->parent->id, path->id, start, count, v));
     }
     template<typename T>
+    /// Writes a strided hyperslab from caller-provided storage.
     void write(const T* v, const std::size_t* start, const std::size_t* count, const std::ptrdiff_t* stride)
     {
         static_assert(!Type<T>::is_atomic || std::is_same<void, T>::value, "Use void or one of the explicitly supported types");
         check(nc_put_vars(path->parent->id, path->id, start, count, stride, v));
     }
     template<typename T>
+    /// Writes mapped data from caller-provided storage.
     void write(const T* v, const std::size_t* start, const std::size_t* count, const std::ptrdiff_t* stride, const std::ptrdiff_t* imap)
     {
         static_assert(std::is_same<void, T>::value, "NetCDF supports mapped access only for atomic types");
@@ -1332,21 +1540,25 @@ class Variable final : public detail::Object {
     }
 
     template<typename T, int N>
+    /// Writes one fixed-rank element from caller-provided storage.
     void write(const T* v, const std::array<std::size_t, N>& index)
     {
         write(v, &index[0]);
     }
     template<typename T, int N>
+    /// Writes a fixed-rank hyperslab from caller-provided storage.
     void write(const T* v, const std::array<std::size_t, N>& start, const std::array<std::size_t, N>& count)
     {
         write(v, &start[0], &count[0]);
     }
     template<typename T, int N>
+    /// Writes a fixed-rank strided hyperslab from caller-provided storage.
     void write(const T* v, const std::array<std::size_t, N>& start, const std::array<std::size_t, N>& count, const std::array<std::ptrdiff_t, N>& stride)
     {
         write(v, &start[0], &count[0], &stride[0]);
     }
     template<typename T, int N>
+    /// Writes fixed-rank mapped data from caller-provided storage.
     void write(const T* v,
                const std::array<std::size_t, N>& start,
                const std::array<std::size_t, N>& count,
@@ -1356,6 +1568,7 @@ class Variable final : public detail::Object {
         write(v, &start[0], &count[0], &stride[0], &imap[0]);
     }
 
+    /// Returns the NetCDF type id of the variable.
     nc_type type() const
     {
         nc_type res;
@@ -1363,6 +1576,7 @@ class Variable final : public detail::Object {
         return res;
     }
 
+    /// Returns the NetCDF type name of the variable.
     std::string type_name() const
     {
         char name[NC_MAX_NAME + 1];
@@ -1370,6 +1584,7 @@ class Variable final : public detail::Object {
         return name;
     }
 
+    /// Returns this variable or throws if its NetCDF type name differs.
     Variable require_type(const std::string& name) const
     {
         const auto name_l = type_name();
@@ -1380,6 +1595,7 @@ class Variable final : public detail::Object {
     }
 
     template<typename T>
+    /// Returns this variable or throws if its user-defined type is not a matching compound type.
     Variable require_compound(std::size_t fieldscount) const
     {
         const auto user_type_l = user_type().require();
@@ -1392,6 +1608,7 @@ class Variable final : public detail::Object {
         return *this;
     }
 
+    /// Returns the user-defined type for this variable, if it has one.
     Maybe<UserType> user_type() const
     {
         const auto id = type();
@@ -1682,11 +1899,14 @@ inline Variable Group::add_variable(const Variable& v, bool with_values)
 
 inline std::vector<UserType> Group::user_types() const
 {
-    int count;
-    check(nc_inq_typeids(path->id, &count, nullptr));
+        int count;
+        check(nc_inq_typeids(path->id, &count, nullptr));
+        if (count == 0) {
+            return {};
+        }
 
-    std::vector<int> ids(count);
-    check(nc_inq_typeids(path->id, nullptr, &ids[0]));
+        std::vector<int> ids(count);
+        check(nc_inq_typeids(path->id, nullptr, &ids[0]));
 
     char name[NC_MAX_NAME + 1];
     std::vector<UserType> res;
@@ -1701,11 +1921,14 @@ inline std::vector<UserType> Group::user_types() const
 
 inline std::vector<Variable> Group::variables() const
 {
-    int count;
-    check(nc_inq_varids(path->id, &count, nullptr));
+        int count;
+        check(nc_inq_varids(path->id, &count, nullptr));
+        if (count == 0) {
+            return {};
+        }
 
-    std::vector<int> ids(count);
-    check(nc_inq_varids(path->id, nullptr, &ids[0]));
+        std::vector<int> ids(count);
+        check(nc_inq_varids(path->id, nullptr, &ids[0]));
 
     char name[NC_MAX_NAME + 1];
     std::vector<Variable> res;

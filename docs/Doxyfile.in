@@ -1,0 +1,55 @@
+PROJECT_NAME           = "netcdfpp"
+PROJECT_BRIEF          = "Header-only NetCDF C++ wrapper"
+PROJECT_NUMBER         =
+
+OUTPUT_DIRECTORY       = @CMAKE_CURRENT_BINARY_DIR@/docs
+CREATE_SUBDIRS         = NO
+OUTPUT_LANGUAGE        = English
+
+INPUT                  = @CMAKE_CURRENT_SOURCE_DIR@/include/netcdfpp.h \
+                         @CMAKE_CURRENT_SOURCE_DIR@/docs/index.md \
+                         @CMAKE_CURRENT_SOURCE_DIR@/docs/quickstart.md \
+                         @CMAKE_CURRENT_SOURCE_DIR@/docs/types.md \
+                         @CMAKE_CURRENT_SOURCE_DIR@/docs/copying.md
+USE_MDFILE_AS_MAINPAGE = @CMAKE_CURRENT_SOURCE_DIR@/docs/index.md
+FILE_PATTERNS          = *.h *.md
+RECURSIVE              = NO
+
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = NO
+HIDE_UNDOC_CLASSES     = NO
+HIDE_UNDOC_MEMBERS     = NO
+
+JAVADOC_AUTOBRIEF      = YES
+QT_AUTOBRIEF           = YES
+MULTILINE_CPP_IS_BRIEF = YES
+MARKDOWN_SUPPORT       = YES
+AUTOLINK_SUPPORT       = YES
+
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+GENERATE_LATEX         = NO
+GENERATE_XML           = NO
+
+HAVE_DOT               = NO
+CLASS_GRAPH            = NO
+COLLABORATION_GRAPH    = NO
+GROUP_GRAPHS           = NO
+INCLUDE_GRAPH          = NO
+INCLUDED_BY_GRAPH      = NO
+GRAPHICAL_HIERARCHY    = NO
+DIRECTORY_GRAPH        = NO
+
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_AS_ERROR          = NO
+
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = NO
+SKIP_FUNCTION_MACROS   = YES
+
+FULL_PATH_NAMES        = NO
+STRIP_FROM_PATH        = @CMAKE_CURRENT_SOURCE_DIR@
+SORT_MEMBER_DOCS       = YES

@@ -17,6 +17,16 @@ include(netcdfpp.cmake)
 include_netcdfpp(test_netcdfpp)
 include_netcdfpp(test_include_self_contained)
 
+find_package(Doxygen)
+if(DOXYGEN_FOUND)
+  configure_file(docs/Doxyfile.in ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile @ONLY)
+  add_custom_target(docs
+    COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Generating API documentation with Doxygen"
+    VERBATIM)
+endif()
+
 add_custom_target(run_main_test
   COMMAND test_netcdfpp
   BYPRODUCTS test.nc test_copy.nc
