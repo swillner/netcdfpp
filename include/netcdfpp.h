@@ -40,6 +40,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <initializer_list>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -601,31 +602,55 @@ class Group : public detail::Object {
 
     /// Defines an opaque user type.
     UserType add_type_opaque(std::string name, std::size_t bytes_size);
+    template<typename T>
+    /// Defines an opaque user type using sizeof(T).
+    UserType add_type_opaque(std::string name);
 
     /// Copies a user-defined type into this group.
     UserType add_user_type(const UserType& t);
 
     /// Defines a variable using a user-defined type and dimension ids.
     Variable add_variable(std::string name, const UserType& type, const std::vector<int>& dims);
+    /// Defines a variable using a braced dimension list.
+    Variable add_variable(std::string name, const UserType& type, std::initializer_list<int> dims);
     /// Defines a variable using a user-defined type and dimension objects.
     Variable add_variable(std::string name, const UserType& type, const std::vector<Dimension>& dims);
+    /// Defines a variable using a braced dimension list.
+    Variable add_variable(std::string name, const UserType& type, std::initializer_list<Dimension> dims);
     /// Defines a variable using a user-defined type and dimension names.
     Variable add_variable(std::string name, const UserType& type, const std::vector<std::string>& dims);
+    /// Defines a variable using a braced dimension list.
+    Variable add_variable(std::string name, const UserType& type, std::initializer_list<std::string> dims);
     /// Defines a variable using a NetCDF type id and dimension ids.
     Variable add_variable(std::string name, nc_type type, const std::vector<int>& dims);
+    /// Defines a variable using a braced dimension list.
+    Variable add_variable(std::string name, nc_type type, std::initializer_list<int> dims);
     /// Defines a variable using a NetCDF type id and dimension objects.
     Variable add_variable(std::string name, nc_type type, const std::vector<Dimension>& dims);
+    /// Defines a variable using a braced dimension list.
+    Variable add_variable(std::string name, nc_type type, std::initializer_list<Dimension> dims);
     /// Defines a variable using a NetCDF type id and dimension names.
     Variable add_variable(std::string name, nc_type type, const std::vector<std::string>& dims);
+    /// Defines a variable using a braced dimension list.
+    Variable add_variable(std::string name, nc_type type, std::initializer_list<std::string> dims);
     template<typename T>
     /// Defines a variable using the mapped NetCDF type of T and dimension ids.
     Variable add_variable(std::string name, const std::vector<int>& dims);
     template<typename T>
+    /// Defines a variable using a braced dimension list.
+    Variable add_variable(std::string name, std::initializer_list<int> dims);
+    template<typename T>
     /// Defines a variable using the mapped NetCDF type of T and dimension objects.
     Variable add_variable(std::string name, const std::vector<Dimension>& dims);
     template<typename T>
+    /// Defines a variable using a braced dimension list.
+    Variable add_variable(std::string name, std::initializer_list<Dimension> dims);
+    template<typename T>
     /// Defines a variable using the mapped NetCDF type of T and dimension names.
     Variable add_variable(std::string name, const std::vector<std::string>& dims);
+    template<typename T>
+    /// Defines a variable using a braced dimension list.
+    Variable add_variable(std::string name, std::initializer_list<std::string> dims);
     /// Copies a variable definition into this group.
     Variable add_variable(const Variable& v, bool with_values = false);
 
@@ -1662,6 +1687,10 @@ inline UserType Group::add_type_enum(std::string name, nc_type basetype) {
     return UserType(std::make_shared<detail::Path>(detail::Path{std::move(name), id, false, path}));
 }
 
+template<typename T>
+inline UserType Group::add_type_opaque(std::string name) {
+    return add_type_opaque(std::move(name), sizeof(T));
+}
 inline UserType Group::add_type_opaque(std::string name, std::size_t bytes_size) {
     int id;
     check(nc_def_opaque(path->id, bytes_size, name.c_str(), &id));
@@ -1784,6 +1813,36 @@ inline Variable Group::add_variable<std::string>(std::string name, const std::ve
 template<>
 inline Variable Group::add_variable<std::string>(std::string name, const std::vector<std::string>& dims) {
     return add_variable(std::move(name), Type<char*>::id, dims);
+}
+inline Variable Group::add_variable(std::string name, const UserType& type, std::initializer_list<int> dims) {
+    return add_variable(std::move(name), type, std::vector<int>(dims));
+}
+inline Variable Group::add_variable(std::string name, const UserType& type, std::initializer_list<Dimension> dims) {
+    return add_variable(std::move(name), type, std::vector<Dimension>(dims));
+}
+inline Variable Group::add_variable(std::string name, const UserType& type, std::initializer_list<std::string> dims) {
+    return add_variable(std::move(name), type, std::vector<std::string>(dims));
+}
+inline Variable Group::add_variable(std::string name, nc_type type, std::initializer_list<int> dims) {
+    return add_variable(std::move(name), type, std::vector<int>(dims));
+}
+inline Variable Group::add_variable(std::string name, nc_type type, std::initializer_list<Dimension> dims) {
+    return add_variable(std::move(name), type, std::vector<Dimension>(dims));
+}
+inline Variable Group::add_variable(std::string name, nc_type type, std::initializer_list<std::string> dims) {
+    return add_variable(std::move(name), type, std::vector<std::string>(dims));
+}
+template<typename T>
+inline Variable Group::add_variable(std::string name, std::initializer_list<int> dims) {
+    return add_variable<T>(std::move(name), std::vector<int>(dims));
+}
+template<typename T>
+inline Variable Group::add_variable(std::string name, std::initializer_list<Dimension> dims) {
+    return add_variable<T>(std::move(name), std::vector<Dimension>(dims));
+}
+template<typename T>
+inline Variable Group::add_variable(std::string name, std::initializer_list<std::string> dims) {
+    return add_variable<T>(std::move(name), std::vector<std::string>(dims));
 }
 inline Variable Group::add_variable(const Variable& v, bool with_values) {
     const auto orig_dims = v.dimensions();

@@ -107,7 +107,7 @@ TEST_CASE("writing") {
     type_compound.add_compound_field_array<decltype(TypeCompound::i)>("i", offsetof(TypeCompound, i), {3, 2});
     type_compound.add_compound_field<decltype(TypeCompound::d)>("d", offsetof(TypeCompound, d));
 
-    auto type_opaque = file.add_type_opaque("type_opaque", sizeof(TypeOpaque));
+    auto type_opaque = file.add_type_opaque<TypeOpaque>("type_opaque");
 
     auto type_vlen = file.add_type_vlen<int>("type_vlen");
 
@@ -122,7 +122,7 @@ TEST_CASE("writing") {
     var_float.set_endianness(NC_ENDIAN_LITTLE);
     var_float.set<float, 1>({123.456f, 789.012f}, {0}, {2});
 
-    auto var_char1 = file.add_variable<unsigned char>("var_char1", {dim_with_size, dim_with_size});
+    auto var_char1 = file.add_variable<unsigned char>("var_char1", {"dim_with_size", "dim_with_size"});
     var_char1.set_chunking({10, 1});
     var_char1.set_checksum_enabled(true);
     var_char1.set_fill<unsigned char>(137);
@@ -131,7 +131,7 @@ TEST_CASE("writing") {
     var_char1.set<unsigned char, 2>({1, 2, 3, 4, 5, 6}, {4, 2}, {3, 2}, {2, 3});
     var_char1.set<unsigned char, 2>({7, 255, 8, 255, 255, 255, 255, 255, 255, 9, 255, 0}, {5, 7}, {2, 2}, {1, 2}, {2, 9});
 
-    auto var_char2 = file.add_variable<char>("var_char2", {dim_with_size, dim_with_size});
+    auto var_char2 = file.add_variable("var_char2", NC_CHAR, {"dim_with_size", "dim_with_size"});
     var_char2.set_fill<char>(-1);
     {
         char buf = 3;
@@ -171,6 +171,8 @@ TEST_CASE("writing") {
     auto var_vlen = file.add_variable("var_vlen", type_vlen, {"dim_two"});
     std::vector<int> vlen_values = {1, 2, 3};
     var_vlen.set<nc_vlen_t, 1>({vlen_values.size(), &vlen_values[0]}, {0});
+
+    REQUIRE_THROWS_AS(file.add_variable("missing", type_opaque, {"dim_with_size", "missing"}), netCDF::Exception);
 
     auto var_opaque = file.add_variable("var_opaque", type_opaque, std::vector<int>{dim_with_size.id()});
     var_opaque.set<TypeOpaque, 1>({'a'}, {0});
@@ -238,7 +240,7 @@ TEST_CASE("empty and scalar objects") {
         REQUIRE(empty_group.variables().empty());
 
         file.add_dimension("empty_dim", 0);
-        file.add_variable<int>("empty_var", {"empty_dim"});
+        file.add_variable<int>("empty_var", {0});
 
         auto scalar_var = file.add_variable<int>("scalar_var", std::vector<int>{});
         scalar_var.set<int>({42});
