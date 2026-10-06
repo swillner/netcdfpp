@@ -1270,7 +1270,7 @@ class Variable final : public detail::Object {
         return res;
     }
 
-    template<int N>
+    template<std::size_t N>
     /// Returns the number of elements selected by a hyperslab count.
     std::size_t size(const std::array<std::size_t, N>& start, const std::array<std::size_t, N>& count) const {
         return size(&start[0], &count[0]);
@@ -1322,17 +1322,17 @@ class Variable final : public detail::Object {
         return res;
     }
 
-    template<typename T, int N>
+    template<typename T, std::size_t N>
     /// Reads one element by fixed-rank index.
     T get(const std::array<std::size_t, N>& index) const {
         return get<T>(&index[0]);
     }
-    template<typename T, int N>
+    template<typename T, std::size_t N>
     /// Reads a fixed-rank hyperslab.
     std::vector<T> get(const std::array<std::size_t, N>& start, const std::array<std::size_t, N>& count) const {
         return get<T>(&start[0], &count[0]);
     }
-    template<typename T, int N>
+    template<typename T, std::size_t N>
     /// Reads a fixed-rank strided hyperslab.
     std::vector<T> get(const std::array<std::size_t, N>& start, const std::array<std::size_t, N>& count, const std::array<std::ptrdiff_t, N>& stride) const {
         return get<T>(&start[0], &count[0], &stride[0]);
@@ -1369,22 +1369,22 @@ class Variable final : public detail::Object {
         check(nc_get_varm(path->parent->id, path->id, start, count, stride, imap, v));
     }
 
-    template<typename T, int N>
+    template<typename T, std::size_t N>
     /// Reads one fixed-rank element into caller-provided storage.
     void read(T* v, const std::array<std::size_t, N>& index) const {
         read(v, &index[0]);
     }
-    template<typename T, int N>
+    template<typename T, std::size_t N>
     /// Reads a fixed-rank hyperslab into caller-provided storage.
     void read(T* v, const std::array<std::size_t, N>& start, const std::array<std::size_t, N>& count) const {
         read(v, &start[0], &count[0]);
     }
-    template<typename T, int N>
+    template<typename T, std::size_t N>
     /// Reads a fixed-rank strided hyperslab into caller-provided storage.
     void read(T* v, const std::array<std::size_t, N>& start, const std::array<std::size_t, N>& count, const std::array<std::ptrdiff_t, N>& stride) const {
         read(v, &start[0], &count[0], &stride[0]);
     }
-    template<typename T, int N>
+    template<typename T, std::size_t N>
     /// Reads fixed-rank mapped data into caller-provided storage.
     void read(T* v,
               const std::array<std::size_t, N>& start,
@@ -1427,17 +1427,17 @@ class Variable final : public detail::Object {
         write(detail::data_or_null(v), start, count, stride, imap);
     }
 
-    template<typename T, int N>
+    template<typename T, std::size_t N>
     /// Writes one fixed-rank element.
     void set(const T v, const std::array<std::size_t, N>& index) {
         set(v, &index[0]);
     }
-    template<typename T, int N>
+    template<typename T, std::size_t N>
     /// Writes a fixed-rank hyperslab from a vector.
     void set(const std::vector<T>& v, const std::array<std::size_t, N>& start, const std::array<std::size_t, N>& count) {
         set(v, &start[0], &count[0]);
     }
-    template<typename T, int N>
+    template<typename T, std::size_t N>
     /// Writes a fixed-rank strided hyperslab from a vector.
     void set(const std::vector<T>& v,
              const std::array<std::size_t, N>& start,
@@ -1445,7 +1445,7 @@ class Variable final : public detail::Object {
              const std::array<std::ptrdiff_t, N>& stride) {
         set(v, &start[0], &count[0], &stride[0]);
     }
-    template<typename T, int N>
+    template<typename T, std::size_t N>
     /// Writes fixed-rank mapped data from a vector.
     void set(const std::vector<T>& v,
              const std::array<std::size_t, N>& start,
@@ -1486,22 +1486,22 @@ class Variable final : public detail::Object {
         check(nc_put_varm(path->parent->id, path->id, start, count, stride, imap, v));
     }
 
-    template<typename T, int N>
+    template<typename T, std::size_t N>
     /// Writes one fixed-rank element from caller-provided storage.
     void write(const T* v, const std::array<std::size_t, N>& index) {
         write(v, &index[0]);
     }
-    template<typename T, int N>
+    template<typename T, std::size_t N>
     /// Writes a fixed-rank hyperslab from caller-provided storage.
     void write(const T* v, const std::array<std::size_t, N>& start, const std::array<std::size_t, N>& count) {
         write(v, &start[0], &count[0]);
     }
-    template<typename T, int N>
+    template<typename T, std::size_t N>
     /// Writes a fixed-rank strided hyperslab from caller-provided storage.
     void write(const T* v, const std::array<std::size_t, N>& start, const std::array<std::size_t, N>& count, const std::array<std::ptrdiff_t, N>& stride) {
         write(v, &start[0], &count[0], &stride[0]);
     }
-    template<typename T, int N>
+    template<typename T, std::size_t N>
     /// Writes fixed-rank mapped data from caller-provided storage.
     void write(const T* v,
                const std::array<std::size_t, N>& start,

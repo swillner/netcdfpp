@@ -298,6 +298,23 @@ TEST_CASE("dimension variables") {
     }
 }
 
+TEST_CASE("array argument deduction") {
+    netCDF::File file("test_array.nc", 'w');
+    file.add_dimension("x", 3);
+    auto var = file.add_variable<double>("values", {"x"});
+    const std::array<std::size_t, 1> start{0}, count{3};
+    const std::vector<double> values{1, 2, 3};
+    std::vector<double> buf(3);
+
+    var.write(values.data(), start, count);
+    REQUIRE(var.get<double>(start, count) == values);
+    REQUIRE(var.size(start, count) == 3);
+    const std::vector<double> replacement{4, 5, 6};
+    var.set(replacement, start, count);
+    var.read(buf.data(), start, count);
+    REQUIRE(buf == replacement);
+}
+
 TEST_CASE("copying") {
     {
         netCDF::File infile("test.nc", 'r');
